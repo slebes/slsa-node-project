@@ -1,4 +1,4 @@
-name: Node.js CI
+name: Node slsa
 
 on: [push]
 
@@ -12,3 +12,35 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/builder_nodejs_slsa3.yml@v1.9.0
     with:
       run-scripts: "ci, build"
+  
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@e33196f7422957bea03ed53f6fbb155025ffc7b8 # v3.7.0
+        with:
+          node-version: 18
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download tarball
+        uses: slsa-framework/slsa-github-generator/actions/nodejs/secure-package-download@v1.9.0
+        with:
+          name: ${{ needs.build.outputs.package-download-name }}
+          path: ${{ needs.build.outputs.package-name }}
+          sha256: ${{ needs.build.outputs.package-download-sha256 }}
+
+      - name: Download provenance
+        uses: slsa-framework/slsa-github-generator/actions/nodejs/secure-attestations-download@v1.9.0
+        with:
+          name: ${{ needs.build.outputs.provenance-download-name }}
+          path: "attestations"
+          sha256: ${{ needs.build.outputs.provenance-download-sha256 }}
+
+      - name: Publish the package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TARBALL_PATH: "${{ needs.build.outputs.package-name }}"
+          PROVENANCE_PATH: "./attestations/${{ needs.build.outputs.provenance-name }}"
+        run: |
+          npm publish "${TARBALL_PATH}" --access=public --provenance-file="${PROVENANCE_PATH}"
